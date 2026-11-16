@@ -114,6 +114,24 @@
   .nifog-row{display:flex;align-items:center;gap:9px;padding:7px 4px;border-bottom:1px solid var(--line)}
   .nifog-row .nn{flex:1;font-family:var(--cond);font-size:13.5px;font-weight:600}
   .nifog-row .nd{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:1px}
+  /* Payment Lifeline module */
+  .pl-tabs{display:flex;gap:6px;margin-bottom:4px;border-bottom:1px solid var(--line);padding-bottom:10px}
+  .pl-tab{opacity:.6}
+  .pl-tab.active{opacity:1;border-color:var(--ring);color:var(--ring)}
+  .pl-row{display:flex;align-items:center;gap:9px;padding:7px 4px;border-bottom:1px solid var(--line)}
+  .pl-row .pn{flex:1;font-family:var(--cond);font-size:13.5px;font-weight:600}
+  .pl-row select{background:var(--bg);border:1px solid var(--line);color:var(--text);font-size:12px;padding:5px 7px;border-radius:4px}
+  .pl-row input[type=text]{background:var(--bg);border:1px solid var(--line);color:var(--text);font-size:12px;padding:5px 7px;border-radius:4px;width:140px}
+  .pl-dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto}
+  .pl-dot.available{background:var(--ok)}
+  .pl-dot.degraded{background:var(--amber)}
+  .pl-dot.unavailable{background:var(--alert)}
+  .pl-dot.unknown{background:var(--dim)}
+  .pl-cash{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dim);white-space:nowrap}
+  .pl-log-row{padding:6px 4px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+  .pl-log-row b{color:var(--text);font-family:var(--sans)}
+  .pl-popup .t{font-family:var(--cond);font-weight:700;font-size:14px;margin-bottom:4px}
+  .pl-popup .row{display:flex;align-items:center;gap:6px;margin:2px 0}
   /* NIFOG tag / tone-mismatch warning on channel rows and popups */
   .nifog-chip{color:var(--ring);border-color:var(--ring)}
   .nifog-warn{
@@ -374,6 +392,7 @@
   }
   #fireStatus b{color:#FF8C42;font-weight:600}
   #terrainBtn.on{background:#1E3A42;border-color:var(--ring);color:var(--ring)}
+  #paymentLayerBtn.on{background:#1E3A2E;border-color:var(--ok);color:var(--ok)}
   .esf2-icon{
     width:30px;height:30px;display:block;filter:drop-shadow(0 1px 3px rgba(0,0,0,.6));
   }
@@ -613,6 +632,8 @@
     <div class="menu-panel">
       <button class="btn" id="firesBtn" aria-pressed="false">Active Fires: Off</button>
       <button class="btn" id="terrainBtn" aria-pressed="false" title="Show/hide computed terrain coverage footprints">Terrain: Off</button>
+      <button class="btn" id="paymentLayerBtn" aria-pressed="false" title="Estimated card-payment capability by Oregon county — manual data, Phase 1 prototype">Payment Lifeline: Off</button>
+      <button class="btn" id="paymentPanelBtn">Payment Lifeline Panel…</button>
     </div>
   </div>
 
@@ -834,6 +855,45 @@
         <input id="newCatName" class="incident-name" style="flex:1;width:auto" placeholder="New function (e.g. Interop)">
         <input id="newCatColor" type="color" value="#7FD4C0" style="width:42px;height:34px;padding:0;border:1px solid var(--line);border-radius:4px;background:var(--bg)">
         <button class="btn primary" id="addCatBtn">Add</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Payment Lifeline (Phase 1 prototype) -->
+<div class="modal-bg" id="paymentModal">
+  <div class="modal" style="width:min(760px,96vw)">
+    <div class="sec-head"><span>Payment Lifeline <span class="hint" style="font-weight:400">— Phase 1 prototype</span></span>
+      <div class="spacer" style="flex:1"></div>
+      <button class="btn" data-close="paymentModal">Close</button></div>
+    <div class="body">
+      <p class="hint" style="margin-bottom:10px">
+        Estimates where card payments are likely working, by Oregon county, from the status of three dependencies — processor/network, local power, and comms.
+        <b>This is an estimate, not ground truth.</b> No transaction data of any kind is collected or shown. Processor status is national; local detail comes from the power and comms toggles below.
+      </p>
+
+      <div class="pl-tabs" id="plTabs">
+        <button class="btn pl-tab active" data-tab="processors">Processors</button>
+        <button class="btn pl-tab" data-tab="counties">Counties</button>
+        <button class="btn pl-tab" data-tab="log">Event Log</button>
+      </div>
+
+      <div class="pl-pane" id="plPane-processors">
+        <p class="hint" style="margin:8px 0">Set each processor's status manually. This is panel-wide (not per-county) — a processor outage affects every county that relies on it.</p>
+        <div id="plProcessorRows"></div>
+      </div>
+
+      <div class="pl-pane" id="plPane-counties" style="display:none">
+        <div class="field" style="margin:8px 0 10px"><input id="plCountyFilter" placeholder="Filter counties…"></div>
+        <div id="plCountyRows"></div>
+      </div>
+
+      <div class="pl-pane" id="plPane-log" style="display:none">
+        <div style="display:flex;gap:8px;margin:8px 0 10px">
+          <button class="btn" id="plExportLogBtn">Export event log (JSON)</button>
+          <button class="btn" id="plClearLogBtn">Clear log</button>
+        </div>
+        <div id="plLogRows"></div>
       </div>
     </div>
   </div>
@@ -1812,6 +1872,9 @@ async function initStorage(){
         if(d.esf2Sites) esf2Sites = d.esf2Sites;
         if(d.esf2Links) esf2Links = d.esf2Links;
         if(d.sitrepNotes) sitrepNotes = d.sitrepNotes;
+        if(d.paymentProcessorStatus) paymentProcessorStatus = d.paymentProcessorStatus;
+        if(d.paymentCountyStatus) paymentCountyStatus = d.paymentCountyStatus;
+        if(d.paymentEventLog) paymentEventLog = d.paymentEventLog;
         if(d.activeIncidentId) activeIncidentId = d.activeIncidentId;
         if(typeof d.esf2ViewAll === 'boolean') esf2ViewAll = d.esf2ViewAll;
         /* migrate the old single free-text incident name into the incident registry */
@@ -1839,7 +1902,8 @@ function persist(){
     try{
       await storageBackend.set(SKEY, JSON.stringify({
         sources, nifogChannels, tutorialSeen,
-        esf2Incidents, esf2Sites, esf2Links, sitrepNotes, activeIncidentId, esf2ViewAll
+        esf2Incidents, esf2Sites, esf2Links, sitrepNotes, activeIncidentId, esf2ViewAll,
+        paymentProcessorStatus, paymentCountyStatus, paymentEventLog
       }));
     }catch(e){ console.error('save failed',e); }
   }, 500);
@@ -2248,7 +2312,8 @@ function exportEsf2Kml(){
 function exportBackupJson(){
   const payload = {
     _backup:true, _app:'CommOps', version:1, exportedAt:new Date().toISOString(),
-    sources, nifogChannels, esf2Incidents, esf2Sites, esf2Links, sitrepNotes, activeIncidentId, esf2ViewAll
+    sources, nifogChannels, esf2Incidents, esf2Sites, esf2Links, sitrepNotes, activeIncidentId, esf2ViewAll,
+    paymentProcessorStatus, paymentCountyStatus, paymentEventLog
   };
   const nm=(activeIncidentName()==='Untitled Incident'?'esf2cop':activeIncidentName()).replace(/[^\w-]+/g,'_');
   const stamp=new Date().toISOString().slice(0,10);
@@ -2261,11 +2326,15 @@ function restoreFromBackup(payload){
   esf2Sites = Array.isArray(payload.esf2Sites) ? payload.esf2Sites : [];
   esf2Links = Array.isArray(payload.esf2Links) ? payload.esf2Links : [];
   sitrepNotes = (payload.sitrepNotes && typeof payload.sitrepNotes==='object') ? payload.sitrepNotes : {};
+  paymentProcessorStatus = (payload.paymentProcessorStatus && typeof payload.paymentProcessorStatus==='object') ? payload.paymentProcessorStatus : {};
+  paymentCountyStatus = (payload.paymentCountyStatus && typeof payload.paymentCountyStatus==='object') ? payload.paymentCountyStatus : {};
+  paymentEventLog = Array.isArray(payload.paymentEventLog) ? payload.paymentEventLog : [];
   activeIncidentId = payload.activeIncidentId || null;
   esf2ViewAll = typeof payload.esf2ViewAll === 'boolean' ? payload.esf2ViewAll : true;
   ensureWorkingSet();
   renderIncidentManageList();
   render(); fitAll();
+  renderPaymentLayer();
   persist();
 }
 function mergeFromBackup(payload){
@@ -2296,9 +2365,28 @@ function mergeFromBackup(payload){
       if(!(incId in sitrepNotes) && esf2Incidents.some(i=>i.id===incId)) sitrepNotes[incId] = payload.sitrepNotes[incId];
     });
   }
+  let addedPaymentEvents=0;
+  if(payload.paymentProcessorStatus && typeof payload.paymentProcessorStatus==='object'){
+    Object.keys(payload.paymentProcessorStatus).forEach(k=>{
+      if(!(k in paymentProcessorStatus)) paymentProcessorStatus[k] = payload.paymentProcessorStatus[k];
+    });
+  }
+  if(payload.paymentCountyStatus && typeof payload.paymentCountyStatus==='object'){
+    Object.keys(payload.paymentCountyStatus).forEach(k=>{
+      if(!(k in paymentCountyStatus)) paymentCountyStatus[k] = payload.paymentCountyStatus[k];
+    });
+  }
+  if(Array.isArray(payload.paymentEventLog)){
+    const existingIds = new Set(paymentEventLog.map(e=>e.id));
+    payload.paymentEventLog.forEach(e=>{
+      if(!e || !e.id || existingIds.has(e.id)) return;
+      paymentEventLog.push(e); addedPaymentEvents++;
+    });
+    paymentEventLog.sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
+  }
   ensureWorkingSet();
   return {
-    added: addedSources+addedIncidents+addedSites+addedLinks>0,
+    added: addedSources+addedIncidents+addedSites+addedLinks+addedPaymentEvents>0,
     sources:addedSources, incidents:addedIncidents, sites:addedSites, links:addedLinks,
     skippedSites, skippedLinks
   };
@@ -4253,6 +4341,224 @@ $('sitrepIncidentSelect').addEventListener('change', e=>{
   });
 });
 $('sitrepPdfBtn').addEventListener('click', ()=>window.print());
+
+/* ================= Payment Lifeline (Phase 1 prototype) =================
+   Estimates card-payment capability per Oregon county from three manually-set
+   dependencies: processor/network status (panel-wide), local power, and comms.
+   Payment capability = worst status of the three, per county. No live feeds,
+   no transaction data — see brief section 6 for the caveats shown in the UI. */
+const PAYMENT_PROCESSORS = ['Visa','Mastercard','Square','Stripe','Clover','Toast'];
+const PL_STATUSES = [
+  {id:'available', name:'Likely available', color:'#6FBF8F'},
+  {id:'degraded', name:'Degraded', color:'#E8B84B'},
+  {id:'unavailable', name:'Likely unavailable', color:'#FF5C48'},
+  {id:'unknown', name:'Unknown', color:'#8FA098'}
+];
+/* Approximate county-seat-area centroids — a prototype marker position, not a
+   survey boundary. Real polygons are fetched live (see plEnsureBoundaries);
+   this is only the fallback when that fetch is unavailable. */
+const OREGON_COUNTIES = [
+  {name:'Baker',lat:44.77,lon:-117.70},{name:'Benton',lat:44.60,lon:-123.35},
+  {name:'Clackamas',lat:45.15,lon:-122.35},{name:'Clatsop',lat:46.05,lon:-123.75},
+  {name:'Columbia',lat:45.88,lon:-123.15},{name:'Coos',lat:43.15,lon:-124.10},
+  {name:'Crook',lat:44.15,lon:-120.35},{name:'Curry',lat:42.60,lon:-124.10},
+  {name:'Deschutes',lat:43.90,lon:-121.30},{name:'Douglas',lat:43.25,lon:-123.15},
+  {name:'Gilliam',lat:45.35,lon:-120.20},{name:'Grant',lat:44.45,lon:-118.85},
+  {name:'Harney',lat:43.15,lon:-118.75},{name:'Hood River',lat:45.50,lon:-121.65},
+  {name:'Jackson',lat:42.35,lon:-122.75},{name:'Jefferson',lat:44.45,lon:-120.90},
+  {name:'Josephine',lat:42.55,lon:-123.55},{name:'Klamath',lat:42.55,lon:-121.65},
+  {name:'Lake',lat:42.70,lon:-120.35},{name:'Lane',lat:43.90,lon:-122.75},
+  {name:'Lincoln',lat:44.65,lon:-123.95},{name:'Linn',lat:44.50,lon:-122.55},
+  {name:'Malheur',lat:43.35,lon:-117.55},{name:'Marion',lat:44.90,lon:-122.55},
+  {name:'Morrow',lat:45.35,lon:-119.35},{name:'Multnomah',lat:45.55,lon:-122.50},
+  {name:'Polk',lat:44.90,lon:-123.30},{name:'Sherman',lat:45.35,lon:-120.75},
+  {name:'Tillamook',lat:45.40,lon:-123.75},{name:'Umatilla',lat:45.65,lon:-118.75},
+  {name:'Union',lat:45.25,lon:-117.90},{name:'Wallowa',lat:45.55,lon:-117.25},
+  {name:'Wasco',lat:45.25,lon:-121.05},{name:'Washington',lat:45.55,lon:-123.10},
+  {name:'Wheeler',lat:44.75,lon:-120.10},{name:'Yamhill',lat:45.25,lon:-123.20}
+];
+
+let paymentProcessorStatus = {};  // {Visa:'available', ...}
+let paymentCountyStatus = {};     // {Baker:{power,comms,note,cashOnly}}
+let paymentEventLog = [];         // [{id,ts,kind,target,field,from,to}]
+let paymentLayerOn = false;
+let paymentBoundaries = null;     // cached live-fetched county polygons, or null if unavailable
+let paymentBoundariesTried = false;
+const paymentLayer = L.layerGroup();
+
+function plStatusById(id){ return PL_STATUSES.find(s=>s.id===id) || PL_STATUSES[3]; }
+function plCountyRecord(name){
+  if(!paymentCountyStatus[name]) paymentCountyStatus[name] = {power:'available', comms:'available', note:'', cashOnly:false};
+  return paymentCountyStatus[name];
+}
+function plWorstOf(list){
+  const order=['unavailable','degraded','unknown','available'];
+  return order.find(s=>list.includes(s)) || 'available';
+}
+function plProcessorWorst(){
+  return plWorstOf(PAYMENT_PROCESSORS.map(p=>paymentProcessorStatus[p]||'available'));
+}
+function plCountyCombined(name){
+  const r = plCountyRecord(name);
+  return plWorstOf([r.power, r.comms, plProcessorWorst()]);
+}
+function plLogEvent(kind, target, field, from, to){
+  paymentEventLog.push({id:uid('ple'), ts:new Date().toISOString(), kind, target, field, from:String(from), to:String(to)});
+}
+function plPopupHtml(countyName){
+  const r = plCountyRecord(countyName);
+  const combined = plStatusById(plCountyCombined(countyName));
+  const power = plStatusById(r.power), comms = plStatusById(r.comms), proc = plStatusById(plProcessorWorst());
+  return `<div class="pl-popup">
+    <div class="t" style="color:${combined.color}">${esc(countyName)} County — ${esc(combined.name)}</div>
+    <div class="row"><span class="pl-dot" style="background:${power.color}"></span>Power: ${esc(power.name)}</div>
+    <div class="row"><span class="pl-dot" style="background:${comms.color}"></span>Comms: ${esc(comms.name)}</div>
+    <div class="row"><span class="pl-dot" style="background:${proc.color}"></span>Processors: ${esc(proc.name)} (national)</div>
+    ${r.note?`<div class="row" style="color:var(--dim)">${esc(r.note)}</div>`:''}
+    ${r.cashOnly?`<div class="row" style="color:var(--amber)">⚠ Cash-only advisory flagged</div>`:''}
+    <div class="row" style="color:var(--dim);margin-top:4px">Estimate only — not ground truth</div>
+  </div>`;
+}
+
+/* best-effort live county boundary fetch (US Census TIGERweb, Oregon = STATE FIPS 41);
+   falls back to the approximate centroid markers above if it fails or is unreachable */
+async function plEnsureBoundaries(){
+  if(paymentBoundaries || paymentBoundariesTried) return;
+  paymentBoundariesTried = true;
+  try{
+    const p = new URLSearchParams({
+      f:'geojson', where:"STATE='41'", outFields:'NAME', returnGeometry:'true',
+      outSR:'4326', geometryPrecision:'4'
+    });
+    const r = await fetch('https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/State_County/MapServer/12/query?'+p.toString());
+    if(!r.ok) throw new Error('http '+r.status);
+    const j = await r.json();
+    if(j && Array.isArray(j.features) && j.features.length) paymentBoundaries = j;
+  }catch(e){ paymentBoundaries = null; }
+}
+function plCountyNameFromFeature(f){
+  const p = f.properties||{};
+  return String(p.NAME || p.NAMELSAD || p.name || '').replace(/\s*county$/i,'').trim();
+}
+async function renderPaymentLayer(){
+  paymentLayer.clearLayers();
+  if(!paymentLayerOn) return;
+  await plEnsureBoundaries();
+  const drawnPolygon = new Set();
+  if(paymentBoundaries){
+    paymentBoundaries.features.forEach(f=>{
+      const rawName = plCountyNameFromFeature(f);
+      const match = OREGON_COUNTIES.find(c=>c.name.toLowerCase()===rawName.toLowerCase());
+      if(!match) return;  // not an Oregon county (or name didn't match) — skip rather than mis-plot
+      const st = plStatusById(plCountyCombined(match.name));
+      L.geoJSON(f, {style:{color:'#0A0F0D', weight:1, fillColor:st.color, fillOpacity:.45}})
+        .bindPopup(plPopupHtml(match.name)).addTo(paymentLayer);
+      drawnPolygon.add(match.name);
+    });
+  }
+  OREGON_COUNTIES.forEach(c=>{
+    if(drawnPolygon.has(c.name)) return;
+    const st = plStatusById(plCountyCombined(c.name));
+    L.circleMarker([c.lat,c.lon], {radius:9, color:'#0A0F0D', weight:1, fillColor:st.color, fillOpacity:.85})
+      .bindPopup(plPopupHtml(c.name)).addTo(paymentLayer);
+  });
+}
+
+/* ---- panel UI ---- */
+function setPaymentTab(tab){
+  document.querySelectorAll('#plTabs .pl-tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+  ['processors','counties','log'].forEach(t=>{ $('plPane-'+t).style.display = (t===tab) ? 'block' : 'none'; });
+}
+function renderPaymentProcessorRows(){
+  $('plProcessorRows').innerHTML = PAYMENT_PROCESSORS.map(p=>{
+    const status = paymentProcessorStatus[p] || 'available';
+    const options = PL_STATUSES.map(s=>`<option value="${s.id}"${s.id===status?' selected':''}>${esc(s.name)}</option>`).join('');
+    return `<div class="pl-row"><span class="pl-dot ${status}"></span><span class="pn">${esc(p)}</span>
+      <select data-proc="${esc(p)}">${options}</select></div>`;
+  }).join('');
+  $('plProcessorRows').querySelectorAll('[data-proc]').forEach(sel=>{
+    sel.addEventListener('change', ()=>{
+      const p = sel.dataset.proc, from = paymentProcessorStatus[p] || 'available', to = sel.value;
+      if(from===to) return;
+      paymentProcessorStatus[p] = to;
+      plLogEvent('processor', p, 'status', from, to);
+      renderPaymentProcessorRows(); renderPaymentCountyRows(); renderPaymentLayer(); persist();
+    });
+  });
+}
+function renderPaymentCountyRows(){
+  const filter = ($('plCountyFilter').value||'').toLowerCase();
+  const list = OREGON_COUNTIES.filter(c=>c.name.toLowerCase().includes(filter));
+  $('plCountyRows').innerHTML = list.map(c=>{
+    const r = plCountyRecord(c.name);
+    const combined = plStatusById(plCountyCombined(c.name));
+    const opts = field => PL_STATUSES.map(s=>`<option value="${s.id}"${s.id===r[field]?' selected':''}>${esc(s.name)}</option>`).join('');
+    return `<div class="pl-row">
+      <span class="pl-dot ${combined.id}" title="${esc(combined.name)}"></span>
+      <span class="pn">${esc(c.name)}</span>
+      <label class="hint" style="font-size:11px">Power</label>
+      <select data-county="${esc(c.name)}" data-field="power">${opts('power')}</select>
+      <label class="hint" style="font-size:11px">Comms</label>
+      <select data-county="${esc(c.name)}" data-field="comms">${opts('comms')}</select>
+      <input type="text" data-county="${esc(c.name)}" data-field="note" placeholder="Note" value="${esc(r.note)}">
+      <label class="pl-cash"><input type="checkbox" data-county="${esc(c.name)}" data-field="cashOnly" ${r.cashOnly?'checked':''}> Cash-only</label>
+    </div>`;
+  }).join('');
+  $('plCountyRows').querySelectorAll('[data-county]').forEach(el=>{
+    const ev = (el.type==='text') ? 'blur' : 'change';
+    el.addEventListener(ev, ()=>{
+      const name = el.dataset.county, field = el.dataset.field;
+      const r = plCountyRecord(name);
+      const from = r[field];
+      const to = el.type==='checkbox' ? el.checked : el.value;
+      if(from===to) return;
+      r[field] = to;
+      plLogEvent('county', name, field, from, to);
+      if(field!=='note') renderPaymentCountyRows();
+      renderPaymentLayer(); persist();
+      if(field==='cashOnly') toast(to ? `Cash-only advisory set for ${name} County` : `Cash-only advisory cleared for ${name} County`);
+    });
+  });
+}
+function renderPaymentLogRows(){
+  const box = $('plLogRows');
+  if(!paymentEventLog.length){ box.innerHTML = '<div class="hint">No manual changes logged yet.</div>'; return; }
+  box.innerHTML = paymentEventLog.slice().reverse().map(e=>
+    `<div class="pl-log-row">${esc(new Date(e.ts).toLocaleString())} — <b>${esc(e.target)}</b> ${esc(e.field)}: ${esc(e.from)} → ${esc(e.to)}</div>`
+  ).join('');
+}
+function openPaymentModal(tab){
+  renderPaymentProcessorRows(); renderPaymentCountyRows(); renderPaymentLogRows();
+  setPaymentTab(tab||'processors');
+  $('paymentModal').classList.add('open');
+}
+$('plTabs').addEventListener('click', e=>{
+  const b=e.target.closest('.pl-tab'); if(!b) return;
+  setPaymentTab(b.dataset.tab);
+  if(b.dataset.tab==='log') renderPaymentLogRows();
+  else if(b.dataset.tab==='counties') renderPaymentCountyRows();
+  else if(b.dataset.tab==='processors') renderPaymentProcessorRows();
+});
+$('plCountyFilter').addEventListener('input', renderPaymentCountyRows);
+$('plExportLogBtn').addEventListener('click', ()=>{
+  if(!paymentEventLog.length){ toast('Nothing to export yet','err'); return; }
+  download(`payment_lifeline_event_log_${new Date().toISOString().slice(0,10)}.json`,'application/json', JSON.stringify(paymentEventLog,null,2));
+});
+$('plClearLogBtn').addEventListener('click', ()=>{
+  if(!paymentEventLog.length) return;
+  if(!confirm('Clear the entire Payment Lifeline event log? This cannot be undone.')) return;
+  paymentEventLog = []; renderPaymentLogRows(); persist(); toast('Event log cleared');
+});
+$('paymentPanelBtn').addEventListener('click', ()=>openPaymentModal('processors'));
+$('paymentLayerBtn').addEventListener('click', async ()=>{
+  paymentLayerOn = !paymentLayerOn;
+  const b = $('paymentLayerBtn');
+  b.classList.toggle('on', paymentLayerOn);
+  b.setAttribute('aria-pressed', String(paymentLayerOn));
+  b.textContent = 'Payment Lifeline: '+(paymentLayerOn?'On':'Off');
+  if(paymentLayerOn) paymentLayer.addTo(map); else map.removeLayer(paymentLayer);
+  await renderPaymentLayer();
+});
 
 initStorage();
 
