@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finance Lifeline (Beta) — CommOps</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{
+    --bg:#0F1613; --panel:#17211D; --panel-2:#1D2A25; --line:#2B3A34;
+    --text:#E8EDE9; --dim:#8FA098; --ok:#6FBF8F; --ring:#5AC8E0;
+    --alert:#FF5C48; --amber:#E8B84B;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --cond:"Avenir Next Condensed","Arial Narrow",Arial,sans-serif;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;overflow:hidden;display:flex;flex-direction:column;width:100%}
+  header{
+    display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;min-height:52px;padding:8px 14px;
+    background:var(--panel);border-bottom:1px solid var(--line);
+  }
+  .brand{font-family:var(--cond);font-weight:700;font-size:19px;letter-spacing:.08em;text-transform:uppercase}
+  .brand b{color:var(--alert)}
+  .beta-tag{font-family:var(--mono);font-size:10px;color:var(--amber);border:1px solid var(--amber);border-radius:3px;padding:1px 5px;margin-left:6px;vertical-align:middle}
+  select, input, textarea{background:var(--bg);border:1px solid var(--line);color:var(--text);font-family:inherit;font-size:12px;padding:6px 8px;border-radius:4px}
+  .spacer{flex:1}
+  .btn{
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    font-family:var(--cond);font-size:13px;letter-spacing:.05em;text-transform:uppercase;
+    padding:7px 12px;border-radius:4px;cursor:pointer;white-space:nowrap;
+  }
+  .btn:hover{border-color:var(--dim)}
+  .btn.mini{font-size:11px;padding:4px 9px}
+  #areaSelect{min-width:220px;font-family:var(--cond);text-transform:none;letter-spacing:0}
+  #main{flex:1;position:relative;min-height:0}
+  #map{position:absolute;inset:0}
+  #areaStatus{
+    position:absolute;left:14px;bottom:14px;z-index:500;max-width:min(380px,80vw);
+    background:rgba(16,22,19,.9);border:1px solid var(--line);border-radius:6px;padding:10px 13px;
+    font-family:var(--mono);font-size:11.5px;color:var(--dim);line-height:1.5;
+  }
+  #areaStatus b{color:var(--text);font-family:var(--sans)}
+  #legend{
+    position:absolute;right:14px;bottom:14px;z-index:500;background:rgba(16,22,19,.9);
+    border:1px solid var(--line);border-radius:6px;padding:10px 13px;display:flex;flex-direction:column;gap:5px;
+  }
+  #legend .li{display:flex;align-items:center;gap:7px;font-size:11.5px}
+  #legend .dot{width:10px;height:10px;border-radius:50%}
+
+  .modal-bg{
+    position:fixed;inset:0;background:rgba(6,10,8,.72);z-index:2000;display:none;
+    align-items:center;justify-content:center;
+  }
+  .modal-bg.open{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:8px;width:min(760px,96vw);max-height:88vh;display:flex;flex-direction:column}
+  .sec-head{display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);font-family:var(--cond);font-size:15px;letter-spacing:.04em;text-transform:uppercase}
+  .sec-head .spacer{flex:1}
+  .modal .body{padding:14px 16px;overflow-y:auto}
+  .hint{color:var(--dim);font-size:12px;line-height:1.5}
+
+  .pl-tabs{display:flex;gap:6px;margin-bottom:10px;border-bottom:1px solid var(--line);padding-bottom:10px}
+  .pl-tab{opacity:.6}
+  .pl-tab.active{opacity:1;border-color:var(--ring);color:var(--ring)}
+  .pl-pane{display:none}
+  .pl-pane.active{display:block}
+  .pl-row{display:flex;align-items:center;gap:9px;padding:7px 4px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .pl-row .pn{flex:0 0 100px;font-family:var(--cond);font-size:13.5px;font-weight:600}
+  .pl-dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto}
+  .pl-dot.available{background:var(--ok)}
+  .pl-dot.degraded{background:var(--amber)}
+  .pl-dot.unavailable{background:var(--alert)}
+  .pl-dot.unknown{background:var(--dim)}
+  .pl-cash{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--dim);white-space:nowrap}
+  .pl-log-row{padding:6px 4px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+  .pl-log-row b{color:var(--text);font-family:var(--sans)}
+  .pl-popup .t{font-family:var(--cond);font-weight:700;font-size:14px;margin-bottom:4px}
+  .pl-popup .row{display:flex;align-items:center;gap:6px;margin:2px 0}
+
+  .toast{
+    position:fixed;top:62px;right:14px;z-index:3000;background:var(--panel-2);
+    border:1px solid var(--ok);color:var(--text);padding:9px 13px;border-radius:5px;
+    font-family:var(--mono);font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.4);
+  }
+  .toast.err{border-color:var(--alert)}
+
+  @media (max-width:700px){
+    header{flex-wrap:nowrap;overflow-x:auto;gap:6px;padding:8px 10px}
+    .brand{flex:0 0 auto}
+    #areaSelect{min-width:160px}
+    header .btn{flex:0 0 auto}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">Comm<b>Ops</b> Finance Lifeline<span class="beta-tag">BETA</span></div>
+  <select id="areaSelect" aria-label="Area of interest"></select>
+  <div class="spacer"></div>
+  <button class="btn" id="processorsBtn">Processors</button>
+  <button class="btn" id="logBtn">Event Log</button>
+  <button class="btn" id="helpBtn" title="About this beta">About</button>
+</header>
+
+<div id="main">
+  <div id="map"></div>
+  <div id="areaStatus">Loading…</div>
+  <div id="legend">
+    <div class="li"><span class="dot" style="background:#6FBF8F"></span>Likely available</div>
+    <div class="li"><span class="dot" style="background:#E8B84B"></span>Degraded</div>
+    <div class="li"><span class="dot" style="background:#FF5C48"></span>Likely unavailable</div>
+    <div class="li"><span class="dot" style="background:#8FA098"></span>Unknown</div>
+  </div>
+</div>
+
+<!-- Processors modal -->
+<div class="modal-bg" id="processorsModal">
+  <div class="modal">
+    <div class="sec-head"><span>Processors</span><div class="spacer"></div><button class="btn mini" data-close="processorsModal">Close</button></div>
+    <div class="body">
+      <p class="hint" style="margin-bottom:10px">Manual status per processor, panel-wide — an outage here affects every county/area in every state. "Check status" links go to each processor's real status page where one exists, to verify what you set below.</p>
+      <div id="processorRows"></div>
+    </div>
+  </div>
+</div>
+
+<!-- County detail / editor modal -->
+<div class="modal-bg" id="countyModal">
+  <div class="modal">
+    <div class="sec-head"><span id="countyModalTitle">County</span><div class="spacer"></div><button class="btn mini" data-close="countyModal">Close</button></div>
+    <div class="body" id="countyModalBody"></div>
+  </div>
+</div>
+
+<!-- Event log modal -->
+<div class="modal-bg" id="logModal">
+  <div class="modal">
+    <div class="sec-head"><span>Event Log</span><div class="spacer"></div><button class="btn mini" data-close="logModal">Close</button></div>
+    <div class="body">
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button class="btn mini" id="exportLogBtn">Export JSON</button>
+        <button class="btn mini" id="clearLogBtn">Clear log</button>
+      </div>
+      <div id="logRows"></div>
+    </div>
+  </div>
+</div>
+
+<!-- About modal -->
+<div class="modal-bg" id="aboutModal">
+  <div class="modal" style="width:min(560px,94vw)">
+    <div class="sec-head"><span>About this beta</span><div class="spacer"></div><button class="btn mini" data-close="aboutModal">Close</button></div>
+    <div class="body">
+      <p class="hint" style="margin-bottom:8px"><b style="color:var(--text)">This is an estimate, not ground truth.</b> It infers card-payment capability from the status of three dependencies — processor/card network, local power, and comms — not from any real transaction data. No transaction data of any kind is collected or shown.</p>
+      <p class="hint" style="margin-bottom:8px">Payment capability for an area = the worst of its three dependency statuses. Processor status is panel-wide (national); power and comms are set per county/area below.</p>
+      <p class="hint" style="margin-bottom:8px">Oregon ships with real county centers and a full offline fallback. Every other state and territory relies on a live fetch of county boundaries from the US Census Bureau's TIGERweb service — if that's unreachable (no internet, or this sandbox), that area's counties won't list until it is.</p>
+      <p class="hint">This is a focused beta build of CommOps's Finance Lifeline module, for testing that module on its own.</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const uid = p => (p||'c') + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+const esc = s => String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(msg, cls){
+  const t=document.createElement('div');
+  t.className='toast'+(cls?' '+cls:''); t.textContent=msg;
+  document.body.appendChild(t); setTimeout(()=>t.remove(),3200);
+}
+function download(filename, mime, content){
+  const blob = new Blob([content], {type:mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+document.querySelectorAll('[data-close]').forEach(btn=>{
+  btn.addEventListener('click', ()=>$(btn.dataset.close).classList.remove('open'));
+});
+document.querySelectorAll('.modal-bg').forEach(bg=>{
+  bg.addEventListener('click', e=>{ if(e.target===bg) bg.classList.remove('open'); });
+});
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape') document.querySelectorAll('.modal-bg.open').forEach(bg=>bg.classList.remove('open'));
+});
+
+/* ================= map ================= */
+const map = L.map('map', {zoomControl:true}).setView([39.8,-98.6],4);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  maxZoom:19, subdomains:'abcd', attribution:'&copy; OpenStreetMap, &copy; CARTO'
+}).addTo(map);
+const financeLayer = L.layerGroup().addTo(map);
+
+/* ================= areas: all 50 states + DC + inhabited US territories ================= */
+const US_AREAS = [
+  {code:'AL',name:'Alabama',fips:'01'},{code:'AK',name:'Alaska',fips:'02'},
+  {code:'AZ',name:'Arizona',fips:'04'},{code:'AR',name:'Arkansas',fips:'05'},
+  {code:'CA',name:'California',fips:'06'},{code:'CO',name:'Colorado',fips:'08'},
+  {code:'CT',name:'Connecticut',fips:'09'},{code:'DE',name:'Delaware',fips:'10'},
+  {code:'DC',name:'District of Columbia',fips:'11'},{code:'FL',name:'Florida',fips:'12'},
+  {code:'GA',name:'Georgia',fips:'13'},{code:'HI',name:'Hawaii',fips:'15'},
+  {code:'ID',name:'Idaho',fips:'16'},{code:'IL',name:'Illinois',fips:'17'},
+  {code:'IN',name:'Indiana',fips:'18'},{code:'IA',name:'Iowa',fips:'19'},
+  {code:'KS',name:'Kansas',fips:'20'},{code:'KY',name:'Kentucky',fips:'21'},
+  {code:'LA',name:'Louisiana',fips:'22'},{code:'ME',name:'Maine',fips:'23'},
+  {code:'MD',name:'Maryland',fips:'24'},{code:'MA',name:'Massachusetts',fips:'25'},
+  {code:'MI',name:'Michigan',fips:'26'},{code:'MN',name:'Minnesota',fips:'27'},
+  {code:'MS',name:'Mississippi',fips:'28'},{code:'MO',name:'Missouri',fips:'29'},
+  {code:'MT',name:'Montana',fips:'30'},{code:'NE',name:'Nebraska',fips:'31'},
+  {code:'NV',name:'Nevada',fips:'32'},{code:'NH',name:'New Hampshire',fips:'33'},
+  {code:'NJ',name:'New Jersey',fips:'34'},{code:'NM',name:'New Mexico',fips:'35'},
+  {code:'NY',name:'New York',fips:'36'},{code:'NC',name:'North Carolina',fips:'37'},
+  {code:'ND',name:'North Dakota',fips:'38'},{code:'OH',name:'Ohio',fips:'39'},
+  {code:'OK',name:'Oklahoma',fips:'40'},{code:'OR',name:'Oregon',fips:'41'},
+  {code:'PA',name:'Pennsylvania',fips:'42'},{code:'RI',name:'Rhode Island',fips:'44'},
+  {code:'SC',name:'South Carolina',fips:'45'},{code:'SD',name:'South Dakota',fips:'46'},
+  {code:'TN',name:'Tennessee',fips:'47'},{code:'TX',name:'Texas',fips:'48'},
+  {code:'UT',name:'Utah',fips:'49'},{code:'VT',name:'Vermont',fips:'50'},
+  {code:'VA',name:'Virginia',fips:'51'},{code:'WA',name:'Washington',fips:'53'},
+  {code:'WV',name:'West Virginia',fips:'54'},{code:'WI',name:'Wisconsin',fips:'55'},
+  {code:'WY',name:'Wyoming',fips:'56'},
+  {code:'PR',name:'Puerto Rico',fips:'72'},{code:'GU',name:'Guam',fips:'66'},
+  {code:'VI',name:'U.S. Virgin Islands',fips:'78'},{code:'AS',name:'American Samoa',fips:'60'},
+  {code:'MP',name:'Northern Mariana Islands',fips:'69'}
+];
+/* approximate default map-framing bounds [south,west,north,east] — for centering only, not precise borders */
+const AREA_BOUNDS = {
+  AL:[30.1,-88.5,35.1,-84.9],AK:[51.2,-179.2,71.5,-129.9],AZ:[31.3,-114.9,37.1,-109.0],
+  AR:[33.0,-94.7,36.6,-89.6],CA:[32.4,-124.5,42.1,-114.1],CO:[36.9,-109.1,41.1,-102.0],
+  CT:[40.9,-73.8,42.1,-71.7],DE:[38.4,-75.8,39.9,-75.0],DC:[38.79,-77.12,39.0,-76.9],
+  FL:[24.4,-87.7,31.1,-79.9],GA:[30.3,-85.7,35.1,-80.7],HI:[18.8,-160.3,22.3,-154.7],
+  ID:[41.9,-117.3,49.1,-111.0],IL:[36.9,-91.6,42.6,-87.0],IN:[37.7,-88.1,41.8,-84.7],
+  IA:[40.3,-96.7,43.6,-90.1],KS:[36.9,-102.1,40.1,-94.5],KY:[36.4,-89.6,39.2,-81.9],
+  LA:[28.8,-94.1,33.1,-88.7],ME:[42.9,-71.2,47.5,-66.8],MD:[37.8,-79.5,39.8,-75.0],
+  MA:[41.2,-73.6,42.9,-69.8],MI:[41.6,-90.5,48.3,-82.3],MN:[43.4,-97.3,49.5,-89.4],
+  MS:[30.1,-91.7,35.1,-88.0],MO:[35.9,-95.9,40.7,-89.0],MT:[44.3,-116.2,49.1,-104.0],
+  NE:[39.9,-104.1,43.1,-95.2],NV:[34.9,-120.1,42.1,-113.9],NH:[42.6,-72.6,45.4,-70.5],
+  NJ:[38.8,-75.7,41.4,-73.8],NM:[31.2,-109.2,37.1,-102.9],NY:[40.4,-79.9,45.1,-71.7],
+  NC:[33.7,-84.4,36.7,-75.3],ND:[45.9,-104.2,49.1,-96.5],OH:[38.3,-85.0,42.4,-80.4],
+  OK:[33.5,-103.1,37.1,-94.3],OR:[41.9,-124.7,46.4,-116.3],PA:[39.6,-80.6,42.6,-74.6],
+  RI:[41.1,-71.9,42.1,-71.1],SC:[32.0,-83.5,35.3,-78.4],SD:[42.4,-104.2,46.1,-96.3],
+  TN:[34.9,-90.4,36.8,-81.6],TX:[25.7,-107.0,36.6,-93.4],UT:[36.9,-114.2,42.1,-108.9],
+  VT:[42.6,-73.5,45.1,-71.4],VA:[36.5,-83.8,39.6,-75.1],WA:[45.4,-124.9,49.1,-116.8],
+  WV:[37.1,-82.7,40.7,-77.6],WI:[42.4,-93.0,47.2,-86.2],WY:[40.9,-111.2,45.1,-104.0],
+  PR:[17.9,-67.3,18.6,-65.2],GU:[13.2,144.6,13.7,145.0],VI:[17.6,-65.1,18.4,-64.5],
+  AS:[-14.4,-171.0,-14.2,-169.4],MP:[14.0,145.1,20.6,146.1]
+};
+function areaById(code){ return US_AREAS.find(a=>a.code===code); }
+
+/* Oregon ships with real county centers for a full offline fallback. Every other area relies
+   on the live boundary fetch below — it has no hardcoded county list of its own. */
+const OREGON_COUNTIES = [
+  {name:'Baker',lat:44.77,lon:-117.70},{name:'Benton',lat:44.60,lon:-123.35},
+  {name:'Clackamas',lat:45.15,lon:-122.35},{name:'Clatsop',lat:46.05,lon:-123.75},
+  {name:'Columbia',lat:45.88,lon:-123.15},{name:'Coos',lat:43.15,lon:-124.10},
+  {name:'Crook',lat:44.15,lon:-120.35},{name:'Curry',lat:42.60,lon:-124.10},
+  {name:'Deschutes',lat:43.90,lon:-121.30},{name:'Douglas',lat:43.25,lon:-123.15},
+  {name:'Gilliam',lat:45.35,lon:-120.20},{name:'Grant',lat:44.45,lon:-118.85},
+  {name:'Harney',lat:43.15,lon:-118.75},{name:'Hood River',lat:45.50,lon:-121.65},
+  {name:'Jackson',lat:42.35,lon:-122.75},{name:'Jefferson',lat:44.45,lon:-120.90},
+  {name:'Josephine',lat:42.55,lon:-123.55},{name:'Klamath',lat:42.55,lon:-121.65},
+  {name:'Lake',lat:42.70,lon:-120.35},{name:'Lane',lat:43.90,lon:-122.75},
+  {name:'Lincoln',lat:44.65,lon:-123.95},{name:'Linn',lat:44.50,lon:-122.55},
+  {name:'Malheur',lat:43.35,lon:-117.55},{name:'Marion',lat:44.90,lon:-122.55},
+  {name:'Morrow',lat:45.35,lon:-119.35},{name:'Multnomah',lat:45.55,lon:-122.50},
+  {name:'Polk',lat:44.90,lon:-123.30},{name:'Sherman',lat:45.35,lon:-120.75},
+  {name:'Tillamook',lat:45.40,lon:-123.75},{name:'Umatilla',lat:45.65,lon:-118.75},
+  {name:'Union',lat:45.25,lon:-117.90},{name:'Wallowa',lat:45.55,lon:-117.25},
+  {name:'Wasco',lat:45.25,lon:-121.05},{name:'Washington',lat:45.55,lon:-123.10},
+  {name:'Wheeler',lat:44.75,lon:-120.10},{name:'Yamhill',lat:45.25,lon:-123.20}
+];
+
+/* ================= processors ================= */
+const PROCESSORS = [
+  {name:'Visa', url:'https://status.visaacceptance.com/', urlLabel:'Visa Acceptance Solutions status (not Visa network-wide)'},
+  {name:'Mastercard', url:'', urlLabel:'No confirmed public status page — add one if you find it'},
+  {name:'Square', url:'https://issquareup.com/', urlLabel:'Square status (issquareup.com)'},
+  {name:'Stripe', url:'https://status.stripe.com/', urlLabel:'Stripe status'},
+  {name:'Clover', url:'https://status.clover.com/', urlLabel:'Clover status'},
+  {name:'Toast', url:'https://status.toasttab.com/', urlLabel:'Toast status'}
+];
+const STATUSES = [
+  {id:'available', name:'Likely available', color:'#6FBF8F'},
+  {id:'degraded', name:'Degraded', color:'#E8B84B'},
+  {id:'unavailable', name:'Likely unavailable', color:'#FF5C48'},
+  {id:'unknown', name:'Unknown', color:'#8FA098'}
+];
+function statusById(id){ return STATUSES.find(s=>s.id===id) || STATUSES[3]; }
+function worstOf(list){
+  const order=['unavailable','degraded','unknown','available'];
+  return order.find(s=>list.includes(s)) || 'available';
+}
+
+/* ================= persisted state ================= */
+const SKEY = 'finance-lifeline-beta-v1';
+let currentAreaCode = 'OR';
+let processorStatus = {};      // {Visa:'available', ...}
+let processorUrls = {};        // {Visa:'https://...'} overrides
+let countyStatus = {};         // {"OR:Baker":{power,comms,note,cashOnly}}
+let eventLog = [];
+const boundaryCache = {};      // {fips: geojson | null}
+try{
+  const raw = localStorage.getItem(SKEY);
+  if(raw){
+    const d = JSON.parse(raw);
+    if(d.currentAreaCode) currentAreaCode = d.currentAreaCode;
+    if(d.processorStatus) processorStatus = d.processorStatus;
+    if(d.processorUrls) processorUrls = d.processorUrls;
+    if(d.countyStatus) countyStatus = d.countyStatus;
+    if(Array.isArray(d.eventLog)) eventLog = d.eventLog;
+  }
+}catch(e){}
+let saveTimer=null;
+function saveNow(){
+  try{
+    localStorage.setItem(SKEY, JSON.stringify({ currentAreaCode, processorStatus, processorUrls, countyStatus, eventLog }));
+  }catch(e){}
+}
+function persist(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveNow, 400);
+}
+window.addEventListener('beforeunload', ()=>{ clearTimeout(saveTimer); saveNow(); });
+
+function countyKey(code, name){ return code+':'+name; }
+function countyRecord(code, name){
+  const k = countyKey(code,name);
+  if(!countyStatus[k]) countyStatus[k] = {power:'available', comms:'available', note:'', cashOnly:false};
+  return countyStatus[k];
+}
+function processorWorst(){
+  return worstOf(PROCESSORS.map(p=>processorStatus[p.name]||'available'));
+}
+function countyCombined(code, name){
+  const r = countyRecord(code,name);
+  return worstOf([r.power, r.comms, processorWorst()]);
+}
+function logEvent(kind, target, field, from, to){
+  eventLog.push({id:uid('le'), ts:new Date().toISOString(), kind, target, field, from:String(from), to:String(to)});
+}
+function urlFor(name){
+  if(processorUrls[name]!==undefined) return processorUrls[name];
+  const def = PROCESSORS.find(p=>p.name===name);
+  return def ? def.url : '';
+}
+
+/* ================= live county boundary fetch (US Census TIGERweb) ================= */
+async function fetchAreaBoundaries(fips){
+  if(fips in boundaryCache) return boundaryCache[fips];
+  try{
+    const p = new URLSearchParams({
+      f:'geojson', where:`STATE='${fips}'`, outFields:'NAME', returnGeometry:'true',
+      outSR:'4326', geometryPrecision:'4'
+    });
+    const r = await fetch('https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/State_County/MapServer/12/query?'+p.toString());
+    if(!r.ok) throw new Error('http '+r.status);
+    const j = await r.json();
+    boundaryCache[fips] = (j && Array.isArray(j.features) && j.features.length) ? j : null;
+  }catch(e){
+    boundaryCache[fips] = null;
+  }
+  return boundaryCache[fips];
+}
+function countyNameFromFeature(f){
+  const p = f.properties||{};
+  return String(p.NAME || p.NAMELSAD || p.name || '').replace(/\s*(county|parish|municipio|borough|census area)$/i,'').trim();
+}
+function popupHtml(code, name){
+  const r = countyRecord(code, name);
+  const combined = statusById(countyCombined(code, name));
+  const power = statusById(r.power), comms = statusById(r.comms), proc = statusById(processorWorst());
+  return `<div class="pl-popup">
+    <div class="t" style="color:${combined.color}">${esc(name)} — ${esc(combined.name)}</div>
+    <div class="row"><span class="pl-dot" style="background:${power.color}"></span>Power: ${esc(power.name)}</div>
+    <div class="row"><span class="pl-dot" style="background:${comms.color}"></span>Comms: ${esc(comms.name)}</div>
+    <div class="row"><span class="pl-dot" style="background:${proc.color}"></span>Processors: ${esc(proc.name)} (national)</div>
+    ${r.note?`<div class="row" style="color:var(--dim)">${esc(r.note)}</div>`:''}
+    ${r.cashOnly?`<div class="row" style="color:var(--amber)">⚠ Cash-only advisory flagged</div>`:''}
+    <div class="row" style="color:var(--dim);margin-top:4px">Estimate only — not ground truth</div>
+  </div>`;
+}
+function buildPopupContent(code, name){
+  const wrap = document.createElement('div');
+  wrap.innerHTML = popupHtml(code, name);
+  const editBtn = document.createElement('button');
+  editBtn.className = 'btn mini';
+  editBtn.style.marginTop = '6px';
+  editBtn.textContent = 'Edit…';
+  editBtn.addEventListener('click', ()=>openCountyEditor(code, name));
+  wrap.firstElementChild.appendChild(editBtn);
+  return wrap.firstElementChild;
+}
+
+let currentCounties = [];  // [{name, lat?, lon?, feature?}] for the area currently shown
+async function renderArea(){
+  const area = areaById(currentAreaCode);
+  financeLayer.clearLayers();
+  currentCounties = [];
+  const b = AREA_BOUNDS[currentAreaCode];
+  if(b) map.fitBounds([[b[0],b[1]],[b[2],b[3]]]);
+
+  $('areaStatus').innerHTML = `<b>${esc(area.name)}</b> — loading county boundaries…`;
+  const boundaries = await fetchAreaBoundaries(area.fips);
+
+  const drawn = new Set();
+  if(boundaries){
+    boundaries.features.forEach(f=>{
+      const name = countyNameFromFeature(f);
+      if(!name) return;
+      const st = statusById(countyCombined(currentAreaCode, name));
+      L.geoJSON(f, {style:{color:'#0A0F0D', weight:1, fillColor:st.color, fillOpacity:.45}})
+        .bindPopup(buildPopupContent(currentAreaCode, name)).addTo(financeLayer);
+      currentCounties.push({name});
+      drawn.add(name);
+    });
+  }
+  if(currentAreaCode==='OR'){
+    OREGON_COUNTIES.forEach(c=>{
+      if(drawn.has(c.name)) return;
+      const st = statusById(countyCombined('OR', c.name));
+      L.circleMarker([c.lat,c.lon], {radius:9, color:'#0A0F0D', weight:1, fillColor:st.color, fillOpacity:.85})
+        .bindPopup(buildPopupContent('OR', c.name)).addTo(financeLayer);
+      currentCounties.push({name:c.name, lat:c.lat, lon:c.lon});
+    });
+  }
+  currentCounties.sort((a,b2)=>a.name.localeCompare(b2.name));
+
+  if(!currentCounties.length){
+    $('areaStatus').innerHTML = `<b>${esc(area.name)}</b> — county boundary data is unreachable right now (needs internet access to the US Census TIGERweb service). ${currentAreaCode==='OR'?'':'Oregon is the only area with an offline fallback.'} Try again once online, or select Oregon for the fully-supported demo.`;
+  } else {
+    $('areaStatus').innerHTML = `<b>${esc(area.name)}</b> — ${currentCounties.length} county/area record${currentCounties.length===1?'':'s'}${boundaries?'':' (approximate centers — live boundaries unavailable)'}. Click one on the map, then "Edit…" in its popup.`;
+  }
+}
+
+/* ================= area selector ================= */
+$('areaSelect').innerHTML = US_AREAS.map(a=>`<option value="${a.code}"${a.code===currentAreaCode?' selected':''}>${esc(a.name)}</option>`).join('');
+$('areaSelect').addEventListener('change', e=>{
+  currentAreaCode = e.target.value;
+  persist();
+  renderArea();
+});
+
+/* ================= processors modal ================= */
+function renderProcessorRows(){
+  $('processorRows').innerHTML = PROCESSORS.map(p=>{
+    const status = processorStatus[p.name] || 'available';
+    const options = STATUSES.map(s=>`<option value="${s.id}"${s.id===status?' selected':''}>${esc(s.name)}</option>`).join('');
+    const url = urlFor(p.name);
+    const link = url
+      ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" class="btn mini" title="${esc(p.urlLabel||'')}">Check status ↗</a>`
+      : `<span class="hint" style="font-size:11px" title="${esc(p.urlLabel||'')}">No status page set</span>`;
+    return `<div class="pl-row">
+      <span class="pl-dot ${status}"></span><span class="pn">${esc(p.name)}</span>
+      <select data-proc="${esc(p.name)}">${options}</select>
+      ${link}
+      <input type="text" data-proc-url="${esc(p.name)}" placeholder="Status page URL" value="${esc(url)}" style="width:220px">
+    </div>`;
+  }).join('');
+  $('processorRows').querySelectorAll('[data-proc]').forEach(sel=>{
+    sel.addEventListener('change', ()=>{
+      const p = sel.dataset.proc, from = processorStatus[p] || 'available', to = sel.value;
+      if(from===to) return;
+      processorStatus[p] = to;
+      logEvent('processor', p, 'status', from, to);
+      renderProcessorRows(); renderArea(); persist();
+    });
+  });
+  $('processorRows').querySelectorAll('[data-proc-url]').forEach(inp=>{
+    inp.addEventListener('blur', ()=>{
+      const name = inp.dataset.procUrl, val = inp.value.trim();
+      if(val === urlFor(name)) return;
+      processorUrls[name] = val;
+      renderProcessorRows(); persist();
+    });
+  });
+}
+$('processorsBtn').addEventListener('click', ()=>{ renderProcessorRows(); $('processorsModal').classList.add('open'); });
+
+/* ================= county editor (opened from a map popup's "Edit…" button) ================= */
+function openCountyEditor(code, name){
+  const area = areaById(code);
+  const r = countyRecord(code, name);
+  $('countyModalTitle').textContent = `${name} — ${area.name}`;
+  const opts = field => STATUSES.map(s=>`<option value="${s.id}"${s.id===r[field]?' selected':''}>${esc(s.name)}</option>`).join('');
+  $('countyModalBody').innerHTML = `
+    <div class="pl-row" style="border-bottom:none">
+      <label class="hint" style="font-size:11px">Power</label>
+      <select id="ce_power">${opts('power')}</select>
+      <label class="hint" style="font-size:11px">Comms</label>
+      <select id="ce_comms">${opts('comms')}</select>
+    </div>
+    <div class="pl-row" style="border-bottom:none">
+      <input type="text" id="ce_note" placeholder="Note (e.g. generators/Starlink)" value="${esc(r.note)}" style="flex:1">
+      <label class="pl-cash"><input type="checkbox" id="ce_cash" ${r.cashOnly?'checked':''}> Cash-only advisory</label>
+    </div>`;
+  const apply = (field, val)=>{
+    const from = r[field];
+    if(from===val) return;
+    r[field]=val;
+    logEvent('county', `${code}:${name}`, field, from, val);
+    renderArea(); persist();
+  };
+  $('ce_power').addEventListener('change', e=>apply('power', e.target.value));
+  $('ce_comms').addEventListener('change', e=>apply('comms', e.target.value));
+  $('ce_note').addEventListener('blur', e=>apply('note', e.target.value));
+  $('ce_cash').addEventListener('change', e=>{
+    apply('cashOnly', e.target.checked);
+    toast(e.target.checked ? `Cash-only advisory set for ${name}` : `Cash-only advisory cleared for ${name}`);
+  });
+  $('countyModal').classList.add('open');
+}
+
+/* ================= event log ================= */
+function renderLogRows(){
+  const box = $('logRows');
+  if(!eventLog.length){ box.innerHTML = '<div class="hint">No manual changes logged yet.</div>'; return; }
+  box.innerHTML = eventLog.slice().reverse().map(e=>
+    `<div class="pl-log-row">${esc(new Date(e.ts).toLocaleString())} — <b>${esc(e.target)}</b> ${esc(e.field)}: ${esc(e.from)} → ${esc(e.to)}</div>`
+  ).join('');
+}
+$('logBtn').addEventListener('click', ()=>{ renderLogRows(); $('logModal').classList.add('open'); });
+$('exportLogBtn').addEventListener('click', ()=>{
+  if(!eventLog.length){ toast('Nothing to export yet','err'); return; }
+  download(`finance_lifeline_event_log_${new Date().toISOString().slice(0,10)}.json`, 'application/json', JSON.stringify(eventLog,null,2));
+});
+$('clearLogBtn').addEventListener('click', ()=>{
+  if(!eventLog.length) return;
+  if(!confirm('Clear the entire event log? This cannot be undone.')) return;
+  eventLog = []; renderLogRows(); persist(); toast('Event log cleared');
+});
+
+$('helpBtn').addEventListener('click', ()=>$('aboutModal').classList.add('open'));
+
+renderArea();
+</script>
+</body>
+</html>
