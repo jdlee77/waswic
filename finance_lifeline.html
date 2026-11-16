@@ -190,8 +190,8 @@ document.addEventListener('keydown', e=>{
 
 /* ================= map ================= */
 const map = L.map('map', {zoomControl:true}).setView([39.8,-98.6],4);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  maxZoom:19, subdomains:'abcd', attribution:'&copy; OpenStreetMap, &copy; CARTO'
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_2h2o_1_c1c73fe10a4de358c027a221', {
+  maxZoom:20, subdomains:'abcd', attribution:'&copy; OpenStreetMap, &copy; CARTO'
 }).addTo(map);
 const financeLayer = L.layerGroup().addTo(map);
 
@@ -396,6 +396,20 @@ function buildPopupContent(code, name){
 }
 
 let currentCounties = [];  // [{name, lat?, lon?, feature?}] for the area currently shown
+function geometryCentroid(geom){
+  const pts = [];
+  function walk(coords, depth){
+    if(depth<=0){ pts.push(coords); return; }
+    coords.forEach(c=>walk(c, depth-1));
+  }
+  if(geom.type==='Polygon') walk(geom.coordinates, 2);
+  else if(geom.type==='MultiPolygon') walk(geom.coordinates, 3);
+  else return null;
+  if(!pts.length) return null;
+  let sx=0, sy=0;
+  pts.forEach(p=>{ sx+=p[0]; sy+=p[1]; });
+  return [sy/pts.length, sx/pts.length];  // GeoJSON is [lon,lat]; Leaflet wants [lat,lon]
+}
 async function renderArea(){
   const area = areaById(currentAreaCode);
   financeLayer.clearLayers();
@@ -406,21 +420,23 @@ async function renderArea(){
   $('areaStatus').innerHTML = `<b>${esc(area.name)}</b> — loading county boundaries…`;
   const boundaries = await fetchAreaBoundaries(area.fips);
 
-  const drawn = new Set();
   if(boundaries){
+    // real boundaries fetched — draw every county as a status dot at its centroid (same visual
+    // treatment everywhere), with a thin outline of its actual shape for geographic context
     boundaries.features.forEach(f=>{
       const name = countyNameFromFeature(f);
       if(!name) return;
+      const centroid = geometryCentroid(f.geometry);
+      if(!centroid) return;
+      L.geoJSON(f, {style:{color:'#2B3A34', weight:1, fillOpacity:0}}).addTo(financeLayer);
       const st = statusById(countyCombined(currentAreaCode, name));
-      L.geoJSON(f, {style:{color:'#0A0F0D', weight:1, fillColor:st.color, fillOpacity:.45}})
+      L.circleMarker(centroid, {radius:7, color:'#0A0F0D', weight:1, fillColor:st.color, fillOpacity:.9})
         .bindPopup(buildPopupContent(currentAreaCode, name)).addTo(financeLayer);
       currentCounties.push({name});
-      drawn.add(name);
     });
-  }
-  if(currentAreaCode==='OR'){
+  } else if(currentAreaCode==='OR'){
+    // live fetch unavailable — Oregon alone has a hardcoded offline fallback
     OREGON_COUNTIES.forEach(c=>{
-      if(drawn.has(c.name)) return;
       const st = statusById(countyCombined('OR', c.name));
       L.circleMarker([c.lat,c.lon], {radius:9, color:'#0A0F0D', weight:1, fillColor:st.color, fillOpacity:.85})
         .bindPopup(buildPopupContent('OR', c.name)).addTo(financeLayer);
