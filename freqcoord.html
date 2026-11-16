@@ -1873,6 +1873,7 @@ async function initStorage(){
         if(d.esf2Links) esf2Links = d.esf2Links;
         if(d.sitrepNotes) sitrepNotes = d.sitrepNotes;
         if(d.paymentProcessorStatus) paymentProcessorStatus = d.paymentProcessorStatus;
+        if(d.paymentProcessorUrls) paymentProcessorUrls = d.paymentProcessorUrls;
         if(d.paymentCountyStatus) paymentCountyStatus = d.paymentCountyStatus;
         if(d.paymentEventLog) paymentEventLog = d.paymentEventLog;
         if(d.activeIncidentId) activeIncidentId = d.activeIncidentId;
@@ -1903,7 +1904,7 @@ function persist(){
       await storageBackend.set(SKEY, JSON.stringify({
         sources, nifogChannels, tutorialSeen,
         esf2Incidents, esf2Sites, esf2Links, sitrepNotes, activeIncidentId, esf2ViewAll,
-        paymentProcessorStatus, paymentCountyStatus, paymentEventLog
+        paymentProcessorStatus, paymentProcessorUrls, paymentCountyStatus, paymentEventLog
       }));
     }catch(e){ console.error('save failed',e); }
   }, 500);
@@ -2313,7 +2314,7 @@ function exportBackupJson(){
   const payload = {
     _backup:true, _app:'CommOps', version:1, exportedAt:new Date().toISOString(),
     sources, nifogChannels, esf2Incidents, esf2Sites, esf2Links, sitrepNotes, activeIncidentId, esf2ViewAll,
-    paymentProcessorStatus, paymentCountyStatus, paymentEventLog
+    paymentProcessorStatus, paymentProcessorUrls, paymentCountyStatus, paymentEventLog
   };
   const nm=(activeIncidentName()==='Untitled Incident'?'esf2cop':activeIncidentName()).replace(/[^\w-]+/g,'_');
   const stamp=new Date().toISOString().slice(0,10);
@@ -2327,6 +2328,7 @@ function restoreFromBackup(payload){
   esf2Links = Array.isArray(payload.esf2Links) ? payload.esf2Links : [];
   sitrepNotes = (payload.sitrepNotes && typeof payload.sitrepNotes==='object') ? payload.sitrepNotes : {};
   paymentProcessorStatus = (payload.paymentProcessorStatus && typeof payload.paymentProcessorStatus==='object') ? payload.paymentProcessorStatus : {};
+  paymentProcessorUrls = (payload.paymentProcessorUrls && typeof payload.paymentProcessorUrls==='object') ? payload.paymentProcessorUrls : {};
   paymentCountyStatus = (payload.paymentCountyStatus && typeof payload.paymentCountyStatus==='object') ? payload.paymentCountyStatus : {};
   paymentEventLog = Array.isArray(payload.paymentEventLog) ? payload.paymentEventLog : [];
   activeIncidentId = payload.activeIncidentId || null;
@@ -2369,6 +2371,11 @@ function mergeFromBackup(payload){
   if(payload.paymentProcessorStatus && typeof payload.paymentProcessorStatus==='object'){
     Object.keys(payload.paymentProcessorStatus).forEach(k=>{
       if(!(k in paymentProcessorStatus)) paymentProcessorStatus[k] = payload.paymentProcessorStatus[k];
+    });
+  }
+  if(payload.paymentProcessorUrls && typeof payload.paymentProcessorUrls==='object'){
+    Object.keys(payload.paymentProcessorUrls).forEach(k=>{
+      if(!(k in paymentProcessorUrls)) paymentProcessorUrls[k] = payload.paymentProcessorUrls[k];
     });
   }
   if(payload.paymentCountyStatus && typeof payload.paymentCountyStatus==='object'){
@@ -4347,7 +4354,18 @@ $('sitrepPdfBtn').addEventListener('click', ()=>window.print());
    dependencies: processor/network status (panel-wide), local power, and comms.
    Payment capability = worst status of the three, per county. No live feeds,
    no transaction data — see brief section 6 for the caveats shown in the UI. */
-const PAYMENT_PROCESSORS = ['Visa','Mastercard','Square','Stripe','Clover','Toast'];
+/* Default status-page links, for verifying the manual status set below against the source.
+   Visa and Mastercard don't have a confirmed general public status page — Visa's link is its
+   Acceptance Solutions/Cybersource arm specifically, and Mastercard's is left blank rather than
+   guessed. All of these are editable per-processor in the panel if you find a better source. */
+const PAYMENT_PROCESSORS = [
+  {name:'Visa', url:'https://status.visaacceptance.com/', urlLabel:'Visa Acceptance Solutions status (not Visa network-wide)'},
+  {name:'Mastercard', url:'', urlLabel:'No confirmed public status page — add one if you find it'},
+  {name:'Square', url:'https://issquareup.com/', urlLabel:'Square status (issquareup.com)'},
+  {name:'Stripe', url:'https://status.stripe.com/', urlLabel:'Stripe status'},
+  {name:'Clover', url:'https://status.clover.com/', urlLabel:'Clover status'},
+  {name:'Toast', url:'https://status.toasttab.com/', urlLabel:'Toast status'}
+];
 const PL_STATUSES = [
   {id:'available', name:'Likely available', color:'#6FBF8F'},
   {id:'degraded', name:'Degraded', color:'#E8B84B'},
@@ -4379,6 +4397,7 @@ const OREGON_COUNTIES = [
 ];
 
 let paymentProcessorStatus = {};  // {Visa:'available', ...}
+let paymentProcessorUrls = {};    // {Visa:'https://...'} — user overrides of the default status-page URLs above
 let paymentCountyStatus = {};     // {Baker:{power,comms,note,cashOnly}}
 let paymentEventLog = [];         // [{id,ts,kind,target,field,from,to}]
 let paymentLayerOn = false;
@@ -4396,7 +4415,7 @@ function plWorstOf(list){
   return order.find(s=>list.includes(s)) || 'available';
 }
 function plProcessorWorst(){
-  return plWorstOf(PAYMENT_PROCESSORS.map(p=>paymentProcessorStatus[p]||'available'));
+  return plWorstOf(PAYMENT_PROCESSORS.map(p=>paymentProcessorStatus[p.name]||'available'));
 }
 function plCountyCombined(name){
   const r = plCountyRecord(name);
@@ -4469,12 +4488,25 @@ function setPaymentTab(tab){
   document.querySelectorAll('#plTabs .pl-tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
   ['processors','counties','log'].forEach(t=>{ $('plPane-'+t).style.display = (t===tab) ? 'block' : 'none'; });
 }
+function plUrlFor(name){
+  if(paymentProcessorUrls[name]!==undefined) return paymentProcessorUrls[name];
+  const def = PAYMENT_PROCESSORS.find(p=>p.name===name);
+  return def ? def.url : '';
+}
 function renderPaymentProcessorRows(){
   $('plProcessorRows').innerHTML = PAYMENT_PROCESSORS.map(p=>{
-    const status = paymentProcessorStatus[p] || 'available';
+    const status = paymentProcessorStatus[p.name] || 'available';
     const options = PL_STATUSES.map(s=>`<option value="${s.id}"${s.id===status?' selected':''}>${esc(s.name)}</option>`).join('');
-    return `<div class="pl-row"><span class="pl-dot ${status}"></span><span class="pn">${esc(p)}</span>
-      <select data-proc="${esc(p)}">${options}</select></div>`;
+    const url = plUrlFor(p.name);
+    const link = url
+      ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" class="btn mini" title="${esc(p.urlLabel||'')}">Check status ↗</a>`
+      : `<span class="hint" style="font-size:11px" title="${esc(p.urlLabel||'')}">No status page set</span>`;
+    return `<div class="pl-row">
+      <span class="pl-dot ${status}"></span><span class="pn">${esc(p.name)}</span>
+      <select data-proc="${esc(p.name)}">${options}</select>
+      ${link}
+      <input type="text" data-proc-url="${esc(p.name)}" placeholder="Status page URL" value="${esc(url)}" style="width:220px">
+    </div>`;
   }).join('');
   $('plProcessorRows').querySelectorAll('[data-proc]').forEach(sel=>{
     sel.addEventListener('change', ()=>{
@@ -4483,6 +4515,16 @@ function renderPaymentProcessorRows(){
       paymentProcessorStatus[p] = to;
       plLogEvent('processor', p, 'status', from, to);
       renderPaymentProcessorRows(); renderPaymentCountyRows(); renderPaymentLayer(); persist();
+    });
+  });
+  $('plProcessorRows').querySelectorAll('[data-proc-url]').forEach(inp=>{
+    inp.addEventListener('blur', ()=>{
+      const name = inp.dataset.procUrl;
+      const val = inp.value.trim();
+      if(val === plUrlFor(name)) return;
+      paymentProcessorUrls[name] = val;
+      renderPaymentProcessorRows();
+      persist();
     });
   });
 }
